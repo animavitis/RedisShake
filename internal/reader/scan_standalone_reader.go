@@ -14,6 +14,7 @@ import (
 	"RedisShake/internal/client/proto"
 	"RedisShake/internal/config"
 	"RedisShake/internal/entry"
+	"RedisShake/internal/filter"
 	"RedisShake/internal/log"
 	"RedisShake/internal/rdb/types"
 	"RedisShake/internal/utils"
@@ -185,6 +186,9 @@ func (r *scanStandaloneReader) scan() {
 			var keys []string
 			cursor, keys = c.Scan(cursor, count)
 			for _, key := range keys {
+				if !filter.AllowKeyEarly(key) {
+					continue // dropped before DUMP, see filter.AllowKeyEarly
+				}
 				r.needDumpQueue.Put(dbKey{dbId, key}) // pass value not pointer
 			}
 
