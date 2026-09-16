@@ -33,6 +33,12 @@ type ScanReaderOptions struct {
 	PreferReplica   bool             `mapstructure:"prefer_replica" default:"false"`
 	Count           int              `mapstructure:"count" default:"1"`
 	SkipUnknownType []string         `mapstructure:"skip_unknown_type" default:"[]"`
+	// DumpQueueSize bounds the scan()->dump() handoff queue. scan() enumerates key
+	// names far faster than dump() can process them, and the previous hardcoded
+	// 100000000 buffered most of the keyspace in RAM on a large database. A bounded
+	// queue makes Put() block, backpressuring scan() to dump() speed so memory stays
+	// flat. Set a very large value to restore the old behaviour.
+	DumpQueueSize int `mapstructure:"dump_queue_size" default:"100000"`
 }
 
 type dbKey struct {
@@ -72,9 +78,13 @@ func NewScanStandaloneReader(ctx context.Context, opts *ScanReaderOptions) Reade
 	r.opts = opts
 	r.ch = make(chan *entry.Entry, 1024)
 	r.stat.Name = "reader_" + strings.Replace(opts.Address, ":", "_", -1)
-	r.needDumpQueue = utils.NewUniqueQueue(100000000)     // cache 100000000 keys
+	queueSize := opts.DumpQueueSize
+	if queueSize < 1 {
+		queueSize = 100000
+	}
+	r.needDumpQueue = utils.NewUniqueQueue(queueSize)     // bounded: backpressures scan() to dump() speed
 	r.needRestoreChan = make(chan *needRestoreItem, 1024) // inflight 1024 keys
-	log.Infof("[%s] scanStandaloneReader init finished. dbs=[%v]", r.stat.Name, r.dbs)
+	log.Infof("[%s] scanStandaloneReader init finished. dbs=[%v], dump_queue_size=[%d]", r.stat.Name, r.dbs, queueSize)
 	return r
 }
 
