@@ -9,6 +9,17 @@ import (
 	"sync"
 )
 
+// AllowKeyEarly reports whether a key passes the configured key filters.
+// It exists so a reader can drop keys BEFORE paying for DUMP, which makes
+// slicing a migration into chunks actually cheaper instead of re-reading
+// the whole keyspace on every pass.
+func AllowKeyEarly(key string) bool {
+	if blockKeyFilter(key) {
+		return false
+	}
+	return allowKeyFilter(key)
+}
+
 // Filter returns:
 // - true if the entry should be processed
 // - false if it should be filtered out
